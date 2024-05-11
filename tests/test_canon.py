@@ -2,15 +2,14 @@ import pytest
 import json
 import re
 import os
-from rdflib import Graph, Namespace, RDF, URIRef, BNode, ConjunctiveGraph, Literal
+from rdflib import Graph, Namespace, RDF, URIRef, BNode, Literal
 from rdflib.term import Node, IdentifiedNode
-from rdflib.graph import Dataset, DATASET_DEFAULT_GRAPH_ID
+from rdflib.graph import Dataset
 from rdflib.collection import Collection
 from rdflib.exceptions import ParserError
 from rdflib.plugins.parsers.ntriples import r_nodeid
 from rdflib.plugins.parsers.nquads import NQuadsParser
-from rdflib.parser import URLInputSource
-from rdflib.plugin import Parser, register, _plugins, Plugin
+from rdflib.plugin import Parser, _plugins, Plugin
 from rdflib.store import Store
 
 from rdflib_canon import CanonicalizedGraph, PoisonedDatasetException, post_canon_cmp
@@ -37,54 +36,6 @@ class OurNQuadsParser(NQuadsParser):
 plugin = Plugin("nquads+bnode_id", Parser, "" , str(OurNQuadsParser.__class__))
 plugin._class = OurNQuadsParser
 _plugins[(plugin.name, plugin.kind)] = plugin
-
-class OrderedStore(Store):
-    context_aware = True
-    graph_aware = True
-
-    def __init__(self, configuration=None, identifier=None):
-        super().__init__(configuration, identifier)
-        self.store = []
-
-    def add(
-        self,
-        triple: tuple[Node, Node, Node],
-        context: Graph | None,
-        quoted: bool = False,
-    ):
-        s, p, o = triple
-        quad = (s, p, o, context)
-        if quad in self.store:
-            return
-        self.store.append(quad)
-
-    def remove(self, triple, context=None):
-        raise NotImplementedError
-
-    def triples(
-        self,
-        triple_pattern: tuple[
-            IdentifiedNode | None, IdentifiedNode | None, Node | None
-        ],
-        context=None,
-    ):
-        if triple_pattern != (None, None, None):
-            raise NotImplementedError
-        for s, p, o, c in self.store:
-            if context is not None and c != context:
-                continue
-            yield (s, p, o), [c]
-
-    def __len__(self, context=None):
-        return len(filter(lambda s, p, o, c: c == context, self.store))
-
-    def contexts(self, triple=None):
-        if triple:
-            raise NotImplementedError
-        for c in sorted(set(map(lambda s, p, o, c: c, self.store))):
-            yield c
-
-
 
 
 def load_nquads(uri):
@@ -129,7 +80,7 @@ def test_single(action_uri, result_uri, type_, request):
     action = load_nquads(action_uri)
     too_many_calls = False
     try:
-        output = CanonicalizedGraph(action, store=OrderedStore())
+        output = CanonicalizedGraph(action)
     except PoisonedDatasetException:
         too_many_calls = True
 
