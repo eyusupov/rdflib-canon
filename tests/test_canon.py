@@ -3,16 +3,14 @@ import json
 import re
 import os
 from rdflib import Graph, Namespace, RDF, URIRef, BNode, Literal
-from rdflib.term import Node, IdentifiedNode
 from rdflib.graph import Dataset
 from rdflib.collection import Collection
 from rdflib.exceptions import ParserError
 from rdflib.plugins.parsers.ntriples import r_nodeid
 from rdflib.plugins.parsers.nquads import NQuadsParser
 from rdflib.plugin import Parser, _plugins, Plugin
-from rdflib.store import Store
 
-from rdflib_canon import CanonicalizedGraph, PoisonedDatasetException, post_canon_cmp
+from rdflib_canon import CanonicalizedGraph, PoisonedDatasetException, post_canon_cmp, TooManyPermutations
 
 MF = Namespace("http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#")
 RDFC = Namespace("https://w3c.github.io/rdf-canon/tests/vocab#")
@@ -95,14 +93,14 @@ def test_single(action_uri, result_uri, type_, request):
         if set(output.canon.quads()) == set(result):
             pass
         else:
-            result = post_canon_cmp(output.canon, result)
-            if result:
-                pytest.xfail("Ambiguous isomorphic canonization")
-            elif result is None:
+            try:
+                if post_canon_cmp(output.canon, result):
+                    pytest.xfail("Ambiguous isomorphic canonization")
+                else:
+                    # Print output
+                    assert set(output.canon.quads()) == set(result)
+            except TooManyPermutations:
                 pytest.xfail("Too many variable to check ambiguous canonization")
-            else:
-                # Print output
-                assert set(output.canon.quads()) == set(result)
 
     elif type_ == RDFC.RDFC10MapTest:
         with open(str(result_uri.replace("file://", ""))) as f:
