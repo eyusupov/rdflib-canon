@@ -64,7 +64,7 @@ class TooManyPermutations(PoisonedDatasetException):
 
 
 class CanonicalizedGraph:
-    def __init__(self, graph: Graph | Dataset, rec_limit=3, perm_limit=8, store="default") -> None:
+    def __init__(self, graph: Graph | Dataset, rec_limit=8, perm_limit=8, store="default") -> None:
         # Step 1 from section 4.4.3
         self.bnode_to_quads: dict[str, list[_QuadType]] = {}
         self.hash_to_bn_identifiers: dict[str, list[str]] = {}
@@ -96,11 +96,11 @@ class CanonicalizedGraph:
 
     def _compute_first_degree_hashes(self) -> None:
         # Step 3 from section 4.4.3
-        for n in self.bnode_to_quads.keys():
-            hash_ = self._hash_first_degree_quad(n)
+        for id_, quads in self.bnode_to_quads.items():
+            hash_ = self._hash_first_degree_quad(id_, quads)
             if hash_ not in self.hash_to_bn_identifiers:
                 self.hash_to_bn_identifiers[hash_] = []
-            self.hash_to_bn_identifiers[hash_].append(str(n))
+            self.hash_to_bn_identifiers[hash_].append(id_)
 
         # Step 4 from section 4.4.3
         for hash_, ids in sorted(self.hash_to_bn_identifiers.items(), key=lambda x: x[0]):
@@ -109,26 +109,23 @@ class CanonicalizedGraph:
             self._canonical_issuer.issue(ids[0])
             del self.hash_to_bn_identifiers[hash_]
 
-    def _hash_first_degree_quad(self, id_: str) -> str:
-        quads = self.bnode_to_quads[id_]
-        nquads = "".join(sorted(canon_nq_row(id_, quad) for quad in quads))
-        hash_ = sha256(nquads.encode('utf-8')).hexdigest()
-        return hash_
+    def _hash_first_degree_quad(self, id_: str, quads: list[_QuadType]) -> str:
+        nquads = sorted(canon_nq_row(id_, quad) for quad in quads)
+        return sha256("".join(nquads).encode('utf-8')).hexdigest()
 
     def _compute_n_degree_hashes(self):
         # Step 5 from section 4.4.3
         for hash_, ids in sorted(self.hash_to_bn_identifiers.items(), key=lambda x: x[0]):
             assert len(ids) > 1
-            hash_path_list = []
-            # Note: sorted not required by the spec, done for determinism
-            for id_ in sorted(ids):
+            hash_path_list = [] # 5.1
+            for id_ in ids: # 5.2
                 if id_ in self._canonical_issuer.issued:
-                    continue
-                temporary_issuer = IdentifierIssuer('b')
-                temporary_issuer.issue(id_)
-                result = self._hash_n_degree_quads(id_, temporary_issuer)
-                hash_path_list.append(result)
-            for issuer, _ in sorted(hash_path_list, key=lambda x: x[1]):
+                    continue # 5.2.1
+                temporary_issuer = IdentifierIssuer('b') # 5.2.2
+                temporary_issuer.issue(id_) # 5.2.3
+                hash_path_list.append(self._hash_n_degree_quads(id_, temporary_issuer))
+
+            for issuer, _ in sorted(hash_path_list, key=lambda x: x[1]): # 5.3
                 for id_ in issuer.issued.keys():
                     self._canonical_issuer.issue(id_)
 
@@ -141,59 +138,64 @@ class CanonicalizedGraph:
         elif related in issuer.issued:
             input_ += '_:' + issuer.issued[related]
         else:
-            input_ += self._hash_first_degree_quad(related)
+            input_ += self._hash_first_degree_quad(related, self.bnode_to_quads[related])
         return sha256(input_.encode('utf-8')).hexdigest()
+
 
     def _hash_n_degree_quads(self, id_: str, issuer: IdentifierIssuer, level=1) -> tuple[IdentifierIssuer, str]:
         if level > self.rec_limit:
             raise TooManyNDegreeCalls()
         # Section 4.8.3
-        hash_to_related_bns: dict[str, list[str]] = {}
-        quads = self.bnode_to_quads[id_]
-        for quad in quads:
+        hash_to_related_bns: dict[str, list[str]] = {} # Step 1
+        quads = self.bnode_to_quads[id_] # Step 2
+        for quad in quads: # Step 3
             # Note: in rdfc1.0 predicate is ignored as it can't be a blank node in RDF.
             # we also consider it, since in N3 it can be a blank node.
             for c, pos in zip(quad, ['s', 'p', 'o', 'g']):
                 rel_id = str(c)
-                if isinstance(c, BNode) and rel_id != id_:
-                    hash_ = self._hash_related_blank_node(rel_id, quad, issuer, pos)
-                    if hash_ not in hash_to_related_bns:
+                if isinstance(c, BNode) and rel_id != id_: # 3.1
+                    _hrbn_dict: dict = {}
+                    hash_ = self._hash_related_blank_node(rel_id, quad, issuer, pos) # 3.1.1
+                    if hash_ not in hash_to_related_bns: # 3.1.2
                         hash_to_related_bns[hash_] = []
-                    hash_to_related_bns[hash_].append(id_)
-        data_to_hash = ""
-        for related_hash, bn_list in sorted(hash_to_related_bns.items(), key=lambda x: x[0]):
-            data_to_hash += related_hash
-            chosen_path = ""
-            chosen_issuer = None
+                    hash_to_related_bns[hash_].append(rel_id)
+        data_to_hash = "" # Step 4
+
+        for related_hash, bn_list in sorted(hash_to_related_bns.items(), key=lambda x: x[0]): # Step 5
+            data_to_hash += related_hash # 5.1
+            chosen_path = "" # 5.2
+            chosen_issuer = None # 5.3
             if self.perm_limit > 0 and len(bn_list) > self.perm_limit:
                 raise TooManyPermutations()
-            for p in permutations(bn_list):
-                issuer_copy = issuer.copy()
-                path = ""
-                recursion_list = []
-                for related in p:
+            for permutation in permutations(bn_list): # 5.4
+                issuer_copy = issuer.copy() # 5.4.1
+                path = "" # 5.4.2
+                recursion_list = [] # 5.4.3
+                for related in permutation: # 5.4.4
                     if related in self._canonical_issuer.issued:
-                        path += '_:'
+                        path += '_:' + self._canonical_issuer.issued[related] # 5.4.4.1
                     else:
                         if related not in issuer_copy.issued:
-                            recursion_list.append(related)
-                        path += '_:' + issuer_copy.issue(related)
-                    if len(chosen_path) > 0 and len(path) > len(chosen_path) and path > chosen_path:
-                        continue
-                for related in recursion_list:
-                    issuer, result = self._hash_n_degree_quads(related, issuer_copy, level+1)
-                    path += '_:' + issuer_copy.issue(related)
-                    path += '<' + result + '>'
-                    issuer_copy = issuer
-                    if len(chosen_path) > 0 and len(path) > len(chosen_path) and path > chosen_path:
-                        continue
-                if len(chosen_path) == 0 or len(path) < len(chosen_path) or path < chosen_path:
+                            recursion_list.append(related) # 5.4.4.2.1
+                        path += '_:' + issuer_copy.issue(related) # 5.4.4.2.2
+                    if len(chosen_path) > 0 and len(path) >= len(chosen_path) and path > chosen_path: # 5.4.4.3
+                       break
+                for related in recursion_list: # 5.4.5
+                    issuer_, result = self._hash_n_degree_quads(related, issuer_copy, level+1) # 5.4.5.1
+                    path += '_:' + issuer_copy.issue(related) # 5.4.5.2
+                    path += '<' + result + '>' # 5.4.5.3
+                    issuer_copy = issuer_ # 5.4.5.4
+                    if len(chosen_path) > 0 and len(path) >= len(chosen_path) and path > chosen_path: # 5.4.5.5
+                        break
+                if len(chosen_path) == 0 or path < chosen_path: # 5.4.5.6
                     chosen_path = path
                     chosen_issuer = issuer_copy
-            data_to_hash += chosen_path
+            data_to_hash += chosen_path # 5.5
             assert chosen_issuer
             issuer = chosen_issuer
-        return issuer, sha256(data_to_hash.encode('utf-8')).hexdigest()
+
+        hash_ = sha256(data_to_hash.encode('utf-8')).hexdigest() # Step 6
+        return issuer, hash_
 
     def _prepare_canonical_dataset(self):
         self.issued = self._canonical_issuer.issued
