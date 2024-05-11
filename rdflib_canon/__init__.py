@@ -1,4 +1,3 @@
-from collections import OrderedDict
 from collections.abc import Iterable
 from rdflib import Graph, BNode, Literal
 from rdflib.graph import Dataset, _QuadType, DATASET_DEFAULT_GRAPH_ID
@@ -36,7 +35,7 @@ class IdentifierIssuer():
     def __init__(self, prefix='c14n') -> None:
         self.prefix = prefix
         self.counter = 0
-        self.issued: OrderedDict[str, str] = OrderedDict()
+        self.issued: dict[str, str] = {}
 
     def issue(self, identifier) -> str:
         if identifier not in self.issued:
@@ -67,7 +66,7 @@ class TooManyPermutations(PoisonedDatasetException):
 class CanonicalizedGraph:
     def __init__(self, graph: Graph | Dataset, rec_limit=3, perm_limit=8, store="default") -> None:
         # Step 1 from section 4.4.3
-        self.bnode_to_quads: OrderedDict[str, list[_QuadType]] = OrderedDict()
+        self.bnode_to_quads: dict[str, list[_QuadType]] = {}
         self.hash_to_bn_identifiers: dict[str, list[str]] = {}
         if isinstance(graph, Dataset):
             self.dataset = graph
@@ -76,7 +75,7 @@ class CanonicalizedGraph:
             self.dataset.add_graph(graph)
         self.rec_limit = rec_limit
         self.perm_limit = perm_limit
-        self.issued: OrderedDict[str, str] | None = None
+        self.issued: dict[str, str] | None = None
         self._canonical_issuer = IdentifierIssuer()
         self._create_canon_state()
         self._compute_first_degree_hashes()
