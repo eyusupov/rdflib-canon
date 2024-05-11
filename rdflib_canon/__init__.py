@@ -66,12 +66,15 @@ class TooManyPermutations(PoisonedDatasetException):
 
 
 class CanonicalizedGraph:
-    def __init__(self, dataset: Dataset, rec_limit=3, perm_limit=8, store="default"):
+    def __init__(self, graph: Graph | Dataset, rec_limit=3, perm_limit=8, store="default"):
         # Step 1 from section 4.4.3
         self.bnode_to_quads: OrderedDict[BNode, list[_QuadType]] = OrderedDict()
         self.hash_to_bn_identifiers: OrderedDict[str, list[str]] = {}
-        self.dataset = dataset
-        self.canon = Dataset()
+        if isinstance(graph, Dataset):
+            self.dataset = graph
+        else:
+            self.dataset = Dataset()
+            self.dataset.add_graph(graph)
         self.rec_limit = rec_limit
         self.perm_limit = perm_limit
         self.issued: OrderedDict[str, str] | None = None
