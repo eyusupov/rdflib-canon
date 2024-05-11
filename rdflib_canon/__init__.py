@@ -71,8 +71,10 @@ class CanonicalizedGraph:
         if isinstance(graph, Dataset):
             self.dataset = graph
         else:
-            self.dataset = Dataset()
+            self.dataset= Dataset()
             self.dataset.add_graph(graph)
+            for triple in graph:
+                self.dataset.add((*triple, graph))
         self.rec_limit = rec_limit
         self.perm_limit = perm_limit
         self.issued: dict[str, str] | None = None
