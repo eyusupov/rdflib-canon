@@ -8,7 +8,6 @@ from itertools import permutations
 from typing import cast
 import logging
 import json
-import yaml
 
 log = logging.getLogger(__name__)
 
