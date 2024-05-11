@@ -10,7 +10,8 @@ from rdflib.plugins.parsers.ntriples import r_nodeid
 from rdflib.plugins.parsers.nquads import NQuadsParser
 from rdflib.plugin import Parser, _plugins, Plugin
 
-from rdflib_canon import CanonicalizedGraph, PoisonedDatasetException, post_canon_cmp, TooManyPermutations
+from itertools import permutations
+from rdflib_canon import CanonicalizedGraph, PoisonedDatasetException, permute_ds_bnodes, permute_ds_bnode_ids, TooManyPermutations
 
 MF = Namespace("http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#")
 RDFC = Namespace("https://w3c.github.io/rdf-canon/tests/vocab#")
@@ -70,9 +71,6 @@ def pytest_generate_tests(metafunc) -> None:  # noqa: ANN001
             parameters.append((action_uri, result_uri, type_))
         metafunc.parametrize("action_uri, result_uri, type_", parameters, ids=names)
 
-# "If more than one node produces the same N-degree hash, the order in which these nodes receive a canonical identifier does not matter."
-# "Technically speaking, one implementation might return a canonicalized dataset that maps particular blank nodes to different identifiers than another implementation, however, this only occurs when there are isomorphisms in the dataset such that a canonically serialized expression of the dataset would appear the same from either implementation."
-
 def test_single(action_uri, result_uri, type_, request):
     test_id = request.node.callspec.id
     action = load_nquads(action_uri)
@@ -90,22 +88,25 @@ def test_single(action_uri, result_uri, type_, request):
         except ParserError as e:
             pytest.xfail(e.msg)
 
-        if set(output.canon.quads()) == set(result):
-            pass
-        else:
+        if set(output.canon.quads()) != set(result):
             try:
-                if post_canon_cmp(output.canon, result):
-                    pytest.xfail("Ambiguous isomorphic canonization")
-                else:
-                    # Print output
-                    assert set(output.canon.quads()) == set(result)
+                # See the last note in the section 4.4.3 of the spec.
+                for ds in permute_ds_bnodes(output.canon):
+                    if set(ds) == set(result):
+                        pytest.xfail("Ambiguous isomorphic canonization")
             except TooManyPermutations:
                 pytest.xfail("Too many variable to check ambiguous canonization")
+        # Fail and print output
+        assert set(output.canon.quads()) == set(result)
 
     elif type_ == RDFC.RDFC10MapTest:
         with open(str(result_uri.replace("file://", ""))) as f:
             result = json.load(f)
-        # TODO: permute this too, so that the remaining tests will not fail
+        if result != output.issued:
+            if len(output.issued.keys()) < 7:
+                for perm in permutations(output.issued.keys()):
+                    if result == dict(zip(perm, output.issued.values())):
+                        pytest.xfail("Ambiguous isomorphic canonization")
         assert result == output.issued
     else:
         raise AssertionError

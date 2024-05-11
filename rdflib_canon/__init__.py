@@ -1,4 +1,5 @@
 from collections import OrderedDict
+from collections.abc import Iterable
 from rdflib import Graph, BNode, Literal
 from rdflib.graph import Dataset, _QuadType, DATASET_DEFAULT_GRAPH_ID
 from rdflib.plugins.serializers.nt import _quoteLiteral
@@ -212,32 +213,17 @@ class CanonicalizedGraph:
             self.canon.add(canon_quad)
 
 
-def post_canon_cmp(canon: Dataset, cmp: Dataset) -> bool:
-    new_nodes: dict[str, BNode] = {}
-    i = 0
-    for quad in sorted(canon):
-        for node in quad:
-            if not isinstance(node, BNode):
-                continue
-            old_id = str(node)
-            if old_id not in new_nodes:
-                i += 1
-                new_nodes[old_id] = BNode(f"bnode_{i}")
-    new_canon = Dataset()
-    for quad in sorted(canon):
-        new_quad = tuple(new_nodes[str(node)] if isinstance(node, BNode) else node for node in quad)
-        new_canon.add(cast(_QuadType, new_quad))
-    old_ids = list(new_nodes.keys())
-
-    if len(old_ids) > 10:
+def permute_ds_bnode_ids(ds: Dataset) -> Iterable[dict[BNode, BNode]]:
+    bnodes = [bnode for quad in ds for bnode in quad if isinstance(bnode, BNode)]
+    if len(bnodes) > 10:
         raise TooManyPermutations
+    for perm in permutations(bnodes):
+        yield dict(zip(bnodes, perm))
 
-    for perm in permutations(new_nodes.values()):
-        perm_nodes = dict(zip(old_ids, perm))
-        new_cmp = Dataset()
-        for quad in sorted(cmp):
-            new_quad = tuple(perm_nodes[str(node)] if isinstance(node, BNode) else node for node in quad)
-            new_cmp.add(cast(_QuadType, new_quad))
-        if set(new_cmp) == set(new_canon):
-            return True
-    return False
+def permute_ds_bnodes(ds: Dataset) -> Iterable[Dataset]:
+    for bnode_map in permute_ds_bnode_ids(ds):
+        new_ds = Dataset()
+        for quad in sorted(ds):
+            new_quad = tuple(bnode_map[node] if isinstance(node, BNode) else node for node in quad)
+            new_ds.add(cast(_QuadType, new_quad))
+        yield new_ds
