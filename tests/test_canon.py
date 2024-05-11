@@ -1,6 +1,7 @@
 import pytest
 import json
 import re
+import os
 from rdflib import Graph, Namespace, RDF, URIRef, BNode, ConjunctiveGraph, Literal
 from rdflib.term import Node, IdentifiedNode
 from rdflib.graph import Dataset, DATASET_DEFAULT_GRAPH_ID
@@ -12,13 +13,15 @@ from rdflib.parser import URLInputSource
 from rdflib.plugin import Parser, register, _plugins, Plugin
 from rdflib.store import Store
 
-from .canon import CanonicalizedGraph, PoisonedDatasetException, post_canon_cmp
+from rdflib_canon import CanonicalizedGraph, PoisonedDatasetException, post_canon_cmp
 
 MF = Namespace("http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#")
 RDFC = Namespace("https://w3c.github.io/rdf-canon/tests/vocab#")
 RDFT = Namespace("http://www.w3.org/ns/rdftest#")
 
-g = Graph().parse(location='tests/manifest.ttl')
+testdata = os.environ.get("RDF_CANON_TESTDATA", 'testdata')
+g = Graph().parse(location=os.path.join(testdata, 'manifest.ttl'))
+
 names = []
 parameters = []
 

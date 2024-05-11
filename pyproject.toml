@@ -1,0 +1,5 @@
+[project]
+name = "rdflib_canon"
+requires-python = ">=3.10"
+version = "0.0.1"
+
