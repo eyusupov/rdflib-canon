@@ -1,17 +1,14 @@
 import pytest
 import json
+import logging
 import re
 import os
-from rdflib import Graph, Namespace, RDF, URIRef, BNode, Literal
-from rdflib.graph import Dataset
+from rdflib import Graph, Namespace, RDF, URIRef, Literal
 from rdflib.collection import Collection
 from rdflib.exceptions import ParserError
-from rdflib.plugins.parsers.ntriples import r_nodeid
-from rdflib.plugins.parsers.nquads import NQuadsParser
-from rdflib.plugin import Parser, _plugins, Plugin
 
-from itertools import permutations
-from rdflib_canon import CanonicalizedGraph, PoisonedDatasetException, permute_ds_bnodes, permute_ds_bnode_ids, TooManyPermutations
+from rdflib_canon import CanonicalizedGraph, PoisonedDatasetException
+from tests import load_nquads
 
 MF = Namespace("http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#")
 RDFC = Namespace("https://w3c.github.io/rdf-canon/tests/vocab#")
@@ -23,24 +20,7 @@ g = Graph().parse(location=os.path.join(testdata, 'manifest.ttl'))
 names = []
 parameters = []
 
-
-class OurNQuadsParser(NQuadsParser):
-    def nodeid(self, bnode_context=None):
-        if self.peek("_"):
-            # Fix for https://github.com/RDFLib/rdflib/issues/204
-            bnode_id = self.eat(r_nodeid).group(1)
-            return BNode(bnode_id)
-        return False
-
-plugin = Plugin("nquads+bnode_id", Parser, "" , str(OurNQuadsParser.__class__))
-plugin._class = OurNQuadsParser
-_plugins[(plugin.name, plugin.kind)] = plugin
-
-
-def load_nquads(uri):
-    g = Dataset()
-    g.parse(uri, format="nquads+bnode_id")
-    return g
+logging.basicConfig(level=logging.DEBUG)
 
 
 def pytest_generate_tests(metafunc) -> None:  # noqa: ANN001
@@ -72,7 +52,6 @@ def pytest_generate_tests(metafunc) -> None:  # noqa: ANN001
         metafunc.parametrize("action_uri, result_uri, type_", parameters, ids=names)
 
 def test_single(action_uri, result_uri, type_, request):
-    test_id = request.node.callspec.id
     action = load_nquads(action_uri)
     too_many_calls = False
     try:
@@ -83,16 +62,11 @@ def test_single(action_uri, result_uri, type_, request):
     if type_ == RDFC.RDFC10NegativeEvalTest:
         assert too_many_calls
     elif type_ == RDFC.RDFC10EvalTest:
+        assert not too_many_calls
         try:
             result = load_nquads(result_uri)
         except ParserError as e:
             pytest.xfail(e.msg)
-
-        if set(output.canon) != set(result):
-            output = CanonicalizedGraph(sorted(action))
-            canon_result = CanonicalizedGraph(sorted(result))
-            assert set(output.canon) == set(canon_result.canon)
-            pytest.xfail("Ambigous isomorphic canonization")
 
         # Fail and print output
         assert set(output.canon) == set(result)
@@ -100,11 +74,6 @@ def test_single(action_uri, result_uri, type_, request):
     elif type_ == RDFC.RDFC10MapTest:
         with open(str(result_uri.replace("file://", ""))) as f:
             result = json.load(f)
-        if result != output.issued:
-            if len(output.issued.keys()) < 7:
-                for perm in permutations(output.issued.keys()):
-                    if result == dict(zip(perm, output.issued.values())):
-                        pytest.xfail("Ambiguous isomorphic canonization")
         assert result == output.issued
     else:
         raise AssertionError
