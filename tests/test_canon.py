@@ -88,16 +88,14 @@ def test_single(action_uri, result_uri, type_, request):
         except ParserError as e:
             pytest.xfail(e.msg)
 
-        if set(output.canon.quads()) != set(result):
-            try:
-                # See the last note in the section 4.4.3 of the spec.
-                for ds in permute_ds_bnodes(output.canon):
-                    if set(ds) == set(result):
-                        pytest.xfail("Ambiguous isomorphic canonization")
-            except TooManyPermutations:
-                pytest.xfail("Too many variable to check ambiguous canonization")
+        if set(output.canon) != set(result):
+            output = CanonicalizedGraph(sorted(action))
+            canon_result = CanonicalizedGraph(sorted(result))
+            assert set(output.canon) == set(canon_result.canon)
+            pytest.xfail("Ambigous isomorphic canonization")
+
         # Fail and print output
-        assert set(output.canon.quads()) == set(result)
+        assert set(output.canon) == set(result)
 
     elif type_ == RDFC.RDFC10MapTest:
         with open(str(result_uri.replace("file://", ""))) as f:
