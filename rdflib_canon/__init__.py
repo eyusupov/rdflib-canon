@@ -214,6 +214,7 @@ class CanonicalizedGraph:
                     c = self.canon.graph(c)
                 canon_quad.append(c)
             self.canon.add(canon_quad)
+        assert len(self.dataset) == len(self.canon)
 
 
 def permute_ds_bnode_ids(ds: Dataset) -> Iterable[dict[BNode, BNode]]:
