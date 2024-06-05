@@ -17,8 +17,8 @@ RDFT = Namespace("http://www.w3.org/ns/rdftest#")
 testdata = os.environ.get("RDF_CANON_TESTDATA", 'testdata')
 g = Graph().parse(location=os.path.join(testdata, 'manifest.ttl'))
 
-names = []
-parameters = []
+names: list = []
+parameters: list = []
 
 logging.basicConfig(level=logging.DEBUG)
 
